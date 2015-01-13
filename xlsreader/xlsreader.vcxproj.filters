@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="头文件\libxl">
+      <UniqueIdentifier>{4ce2443c-8c10-4c57-ab79-26cac52abfec}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -24,6 +27,9 @@
     <ClCompile Include="ExcelFormat.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="protomaker.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BasicExcel.hpp">
@@ -31,6 +37,30 @@
     </ClInclude>
     <ClInclude Include="ExcelFormat.h">
       <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="protomaker.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\enum.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\IBookT.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\IFontT.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\IFormatT.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\ISheetT.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\libxl.h">
+      <Filter>头文件\libxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include_cpp\setup.h">
+      <Filter>头文件\libxl</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

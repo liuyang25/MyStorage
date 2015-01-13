@@ -51,11 +51,13 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>F:\MyStorage\xlsreader\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libxl.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -79,10 +81,19 @@
     <ClCompile Include="BasicExcel.cpp" />
     <ClCompile Include="ExcelFormat.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="protomaker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BasicExcel.hpp" />
     <ClInclude Include="ExcelFormat.h" />
+    <ClInclude Include="include_cpp\enum.h" />
+    <ClInclude Include="include_cpp\IBookT.h" />
+    <ClInclude Include="include_cpp\IFontT.h" />
+    <ClInclude Include="include_cpp\IFormatT.h" />
+    <ClInclude Include="include_cpp\ISheetT.h" />
+    <ClInclude Include="include_cpp\libxl.h" />
+    <ClInclude Include="include_cpp\setup.h" />
+    <ClInclude Include="protomaker.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
