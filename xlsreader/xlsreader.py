@@ -54,7 +54,7 @@ LOG_ERROR=LogHelp.get_logger().error
 
 # 行 内容				eg
 # #1 表格备注			**活动配置
-# #2 自定义结构列表		Item(-){id[int],num[int]}		Reward(#){item[Item]}
+# #2 自定义结构列表		Item[-]{id(int),num(int)}		Reward[#]{item(Item)}
 # #3 备注				item(id-num) item#item#item		描述说明或内容样本
 # #4 类型				Reward							int string uint 自定义结构
 # #5 中文名				物品奖励						生成注释
@@ -63,8 +63,8 @@ ROW_TABLE_DESCRIPTION 	= 0
 ROW_STRUCT_DEFINE 		= 1
 ROW_FIELD_COMMENT		= 2
 ROW_FIELD_TYPE			= 3
-ROW_FILED_CNAME			= 4
-ROW_FILED_NAME			= 5
+ROW_FIELD_CNAME			= 4
+ROW_FIELD_NAME			= 5
 
 struct_name_map = { "struct":0, "int":1, "short":1, "int32":1, "uint":2, "uint32":2, "string":3, "bool":4, "float":5, "double":6 }
 type_name_map = { 1:"int32", 2:"uint32", 3:"bytes", 4:"bool", 5:"float", 6:"double"}
@@ -88,7 +88,7 @@ def FormatType(type):
 class FieldNode:
     def __init__(self):
         self.name = ""    #节点名
-        self.type = 0     #节点类型
+        self.type = ""     #节点类型
 
 class StructNode:
     def __init__(self):
@@ -124,6 +124,7 @@ class XlsReader:
 
         self._pb_file_name = "ly_pb_temp.proto" #"ly_temp_pb_" + self._workbook.file_name + ".proto"        临时文件，不用管中文问题
         self._struct_list = []
+        self._sheets = {}
 
 
     def Parse(self) :
@@ -131,7 +132,8 @@ class XlsReader:
         self._output.append("package pb_deploy;\n")
 
         for sheet in self._workbook.sheets():
-            _ParseSheet(sheet)
+            self._sheets[sheet.name] = SheetNode()
+            self._ParseSheet(sheet, self._sheets[sheet.name])
 
         self._Write2File()
         LogHelp.close()
@@ -143,42 +145,49 @@ class XlsReader:
             print "protoc failed!"
             raise
 
-        os.remove(self._pb_file_name)   #remove temperate file
+        #os.remove(self._pb_file_name)   #remove temperate file
 
-        DataParse()
+        #DataParse()
 
-    def _ParseSheet(self, sheet) :
-        self._LayoutStructHead(sheet.sheet_name)
+    def _ParseSheet(self, sheet, sheet_node) :
+        self._LayoutStructHead(sheet.name)
         self._IncreaseIndentation()
 
         col_count = len(sheet.row_values(ROW_STRUCT_DEFINE))
         LOG_INFO("struct define parse, col_count = %d", col_count)
-        for col in range(0, self._col_count) :
-            self._ParseStructDefine(sheet, col)
+        for col in range(0, col_count) :
+            self._ParseStructDefine(sheet, sheet_node, col)
 
         col_count = len(sheet.row_values(ROW_FIELD_TYPE))
         LOG_INFO("field parse, col_count = %d", col_count)
-        for col in range(0, self._col_count) :
-            self._ParseFieldDefine(sheet, col)
+        for col in range(0, col_count) :
+            self._ParseFieldDefine(sheet, sheet_node, col)
 
         #开始输出
-        self._LayoutStructDefines(sheet)
-        self._LayoutFieldDefines(sheet)
+        self._LayoutStructDefines(sheet_node)
+        self._LayoutFieldDefines(sheet_node)
 
         self._DecreaseIndentation()
-        self._LayotuStructTail()
+        self._LayoutStructTail()
 
 #Items[#]{item(Item)}
 #Reward[,]{items(Items),exp(int)}
-    def _ParseStructDefine(self, sheet, col):
+    def _ParseStructDefine(self, sheet, sheet_node, col):
         struct_form_string = str(sheet.cell_value(ROW_STRUCT_DEFINE, col)).strip()
+        if len(struct_form_string) == 0 :
+            return
+
         i1 = struct_form_string.find('[')
         i2 = struct_form_string.find(']')
         i3 = struct_form_string.find('{')
         i4 = struct_form_string.find('}')
 
         if i1 < 1 or i2 != i1+2 or i3 != i2+1 or i4 < i3+4 :
-            print "struct parse failed at sheet:%s row:%d col:%d" %(sheet.name, ROW_STRUCT_DEFINE, col)
+            print "struct parse failed at sheet:%s row:%d col:%d value:%s" %(sheet.name, ROW_STRUCT_DEFINE, col, struct_form_string)
+            print i1
+            print i2
+            print i3 
+            print i4
             sys.exit(-1)
 
         struct_node = StructNode()
@@ -186,10 +195,10 @@ class XlsReader:
         struct_node.delimiter = struct_form_string[i1+1:i2]
 
         #存入结构列表
-        if sheet.structs.has_key(struct_node.name) :
+        if sheet_node.structs.has_key(struct_node.name) :
             print "struct define repeated : " + struct_node.name
             sys.exit(-1)
-        sheet.structs[struct_node.name] = struct_node
+        sheet_node.structs[struct_node.name] = struct_node
 
         #解析子结构
         fields = struct_form_string[i3+1:i4].split(",")
@@ -207,24 +216,26 @@ class XlsReader:
                 sys.exit(-1)
             struct_node.fields[node.name] = node
 
-    def _ParseFieldDefine(self, sheet, col):
+    def _ParseFieldDefine(self, sheet, sheet_node, col):
         field_type = str(sheet.cell_value(ROW_FIELD_TYPE, col)).strip()
         field_name = str(sheet.cell_value(ROW_FIELD_NAME, col)).strip()
         field_cname = unicode(sheet.cell_value(ROW_FIELD_CNAME, col))
+        if len(field_type) == 0 or len(field_name) == 0 or len(field_cname) == 0 :
+            return
         type_id = TypeToInt(field_type)
 
-        if sheet.fields.has_hey(field_name) : 
-            print "sheet:%s field: %s define repeated" % (sheet.file_name, field_name)
+        if sheet_node.fields.has_key(field_name) : 
+            print "sheet:%s field: %s define repeated" % (sheet.name, field_name)
             sys.exit(-1)
-        if type_id == 0 and sheet.structs.has_key(field_type) == False :
-            print "sheet:%s field: %s 's type %s not defined or surported." % (sheet.file_name, field_name, field_type)
+        if type_id == 0 and sheet_node.structs.has_key(field_type) == False :
+            print "sheet:%s field: %s 's type %s not defined or surported. col %d" % (sheet.name, field_name, field_type, col)
             sys.exit(-1)
 
-        sheet.fields[field_name] = FormatType(field_type)
+        sheet_node.fields[field_name] = FormatType(field_type)
 
-    def _LayoutStructDefines(self, sheet):
-        for struct_name in sheet.structs :
-            struct_node = sheet.structs[struct_name]
+    def _LayoutStructDefines(self, sheet_node) :
+        for struct_name in sheet_node.structs :
+            struct_node = sheet_node.structs[struct_name]
             self._LayoutStructHead(struct_node.name)    # Reward  | Items
             self._IncreaseIndentation()
             field_num = 1
@@ -242,85 +253,11 @@ class XlsReader:
 
 
     def _LayoutFieldDefines(self, sheet):
+        field_num = 1;
+        for field_name in sheet.fields :
+            self._output.append("\t"*self._indentation + "optional " + sheet.fields[field_name] + " " + field_name + " = " + str(field_num) + ";\n")
+            field_num += 1
 
-    def old_fielddefine():
-        field_type = str(self._sheet.cell_value(FIELD_TYPE_ROW, self._col)).strip()
-        field_name = str(self._sheet.cell_value(FIELD_NAME_ROW, self._col)).strip()
-        field_comment = unicode(self._sheet.cell_value(FIELD_COMMENT_ROW, self._col))
-
-        LOG_INFO("%s|%s|%s|%s", field_rule, field_type, field_name, field_comment)
-
-        comment = field_comment.encode("utf-8")
-        self._LayoutComment(comment)
-
-        if repeated_num >= 1:
-            field_rule = "repeated"
-
-            self._LayoutOneField(field_rule, field_type, field_name)
-
-            actual_repeated_num = 1 if (repeated_num == 0) else repeated_num
-            self._col += actual_repeated_num
-
-        elif field_rule == "repeated" :
-            # 2011-11-29 修改
-            # 若repeated第二行是类型定义，则表示当前字段是repeated，并且数据在单列用分好相隔
-            second_row = str(self._sheet.cell_value(FIELD_TYPE_ROW, self._col)).strip()
-            LOG_DEBUG("repeated|%s", second_row);
-            # exel有可能有小数点
-            if second_row.isdigit() or second_row.find(".") != -1 :
-                # 这里后面一般会是一个结构体
-                repeated_num = int(float(second_row))
-                LOG_INFO("%s|%d", field_rule, repeated_num)
-                self._col += 1
-                self._FieldDefine(repeated_num)
-            else :
-                # 一般是简单的单字段，数值用分号相隔
-                field_type = second_row
-                field_name = str(self._sheet.cell_value(FIELD_NAME_ROW, self._col)).strip()
-                field_comment = unicode(self._sheet.cell_value(FIELD_COMMENT_ROW, self._col))
-                LOG_INFO("%s|%s|%s|%s", field_rule, field_type, field_name, field_comment)
-
-                comment = field_comment.encode("utf-8")
-                self._LayoutComment(comment)
-
-                self._LayoutOneField(field_rule, field_type, field_name)
-
-                self._col += 1
-
-        elif field_rule == "required_struct" or field_rule == "optional_struct":
-            field_num = int(self._sheet.cell_value(FIELD_TYPE_ROW, self._col))
-            struct_name = str(self._sheet.cell_value(FIELD_NAME_ROW, self._col)).strip()
-            field_name = str(self._sheet.cell_value(FIELD_COMMENT_ROW, self._col)).strip()
-
-            LOG_INFO("%s|%d|%s|%s", field_rule, field_num, struct_name, field_name)
-
-
-            if (self._IsStructDefined(struct_name)) :
-                self._is_layout = False
-            else :
-                self._struct_name_list.append(struct_name)
-                self._is_layout = True
-
-            col_begin = self._col
-            self._StructDefine(struct_name, field_num)
-            col_end = self._col
-
-            self._is_layout = True
-
-            if repeated_num >= 1:
-                field_rule = "repeated"
-            elif field_rule == "required_struct":
-                field_rule = "required"
-            else:
-                field_rule = "optional"
-
-            self._LayoutOneField(field_rule, struct_name, field_name)
-
-            actual_repeated_num = 1 if (repeated_num == 0) else repeated_num
-            self._col += (actual_repeated_num-1) * (col_end-col_begin)
-        else :
-            self._col += 1
-            return
 
     def _LayoutFileHeader(self) :
         """生成PB文件的描述信息"""
@@ -334,8 +271,6 @@ class XlsReader:
 
     def _LayoutStructHead(self, struct_name) :
         """生成结构头"""
-        if not self._is_layout :
-            return
         self._output.append("\n")
         self._output.append("\t"*self._indentation + "message " + struct_name + "{\n")
 
@@ -343,53 +278,6 @@ class XlsReader:
         """生成结构尾"""
         self._output.append("\t"*self._indentation + "}\n")
         self._output.append("\n")
-
-    def _LayoutComment(self, comment) :
-        # 改用C风格的注释，防止会有分行
-        if not self._is_layout :
-            return
-        if comment.count("\n") > 1 :
-            if comment[-1] != '\n':
-                comment = comment + "\n"
-                comment = comment.replace("\n", "\n" + "\t" * (self._indentation + TAP_BLANK_NUM),
-                        comment.count("\n")-1 )
-                self._output.append("\t"*self._indentation + "/** " + comment + "\t"*self._indentation + "*/\n")
-        else :
-            self._output.append("\t"*self._indentation + "/** " + comment + " */\n")
-
-    def _LayoutOneField(self, field_rule, field_type, field_name) :
-        """输出一行定义"""
-        if not self._is_layout :
-            return
-        if field_name.find('=') > 0 :
-            name_and_value = field_name.split('=')
-            self._output.append("\t"*self._indentation + field_rule + " " + field_type \
-                    + " " + str(name_and_value[0]).strip() + " = " + self._GetAndAddFieldIndex()\
-                    + " [default = " + str(name_and_value[1]).strip() + "]" + ";\n")
-            return
-
-        if (field_rule != "required" and field_rule != "optional") :
-            self._output.append("\t"*self._indentation + field_rule + " " + field_type \
-                    + " " + field_name + " = " + self._GetAndAddFieldIndex() + ";\n")
-            return
-
-        if field_type == "int32" or field_type == "int64"\
-                or field_type == "uint32" or field_type == "uint64"\
-                or field_type == "sint32" or field_type == "sint64"\
-                or field_type == "fixed32" or field_type == "fixed64"\
-                or field_type == "sfixed32" or field_type == "sfixed64" \
-                or field_type == "double" or field_type == "float" :
-                    self._output.append("\t"*self._indentation + field_rule + " " + field_type \
-                            + " " + field_name + " = " + self._GetAndAddFieldIndex()\
-                            + " [default = 0]" + ";\n")
-        elif field_type == "string" or field_type == "bytes" :
-            self._output.append("\t"*self._indentation + field_rule + " " + field_type \
-                    + " " + field_name + " = " + self._GetAndAddFieldIndex()\
-                    + " [default = \"\"]" + ";\n")
-        else :
-            self._output.append("\t"*self._indentation + field_rule + " " + field_type \
-                    + " " + field_name + " = " + self._GetAndAddFieldIndex() + ";\n")
-        return
 
     def _IncreaseIndentation(self) :
         """增加缩进"""
@@ -411,6 +299,8 @@ class DataReader:
     def __init__(self, xls_file_path, sheet_name):
         self._xls_file_path = xls_file_path
         self._sheet_name = sheet_name
+
+        print "DataParse ParseField"
 
         try :
             self._workbook = xlrd.open_workbook(self._xls_file_path)
@@ -482,6 +372,7 @@ class DataReader:
             self._ParseField(0, 0, item)
 
     def _ParseField(self, max_repeated_num, repeated_num, item) :
+        print "DataParse ParseField"
         field_rule = str(self._sheet.cell_value(0, self._col)).strip()
 
         if field_rule == "required" or field_rule == "optional" :
@@ -668,7 +559,7 @@ class DataReader:
 
 if __name__ == '__main__' :
     """入口"""
-    if len(sys.argv) < 3 :
+    if len(sys.argv) < 2 :
         print "Usage: %s xls_file" %(sys.argv[0])
         sys.exit(-1)
 
