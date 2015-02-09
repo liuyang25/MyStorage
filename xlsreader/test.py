@@ -1,6 +1,7 @@
 #coding=utf-8
 
 #string = "Items[#]{item(Item)}"
+import google.protobuf
 string = "Rewards[,]{items(Items),exp(int),point(int)}"
 
 v = string.split("[")
@@ -34,6 +35,7 @@ for field in fields:
 
 a = {1: "abc"}
 print a.values()[0]
+print 1 + 2 + 3 + 4
 
 """name="hehe"
 row=2

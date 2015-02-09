@@ -95,6 +95,7 @@ class StructNode:
         self.name = ""
         self.delimiter = ""
         self.fields = {}    #node_name: FieldNode
+        self.repeated = False
 
 """ message sheet_name
     {
@@ -112,6 +113,7 @@ class XlsReader:
     """通过excel配置生成配置的protobuf定义文件"""
     def __init__(self, xls_file_path):
         self._xls_file_path = xls_file_path
+        self._book_name = self._xls_file_path.split("\\")[-1].split(".")[0]
         self._tables = {}           # name:TableInfo
         try :
             self._workbook = xlrd.open_workbook(self._xls_file_path)
@@ -122,18 +124,21 @@ class XlsReader:
         self._output = []           # 将所有的输出先写到一个list， 最后统一写到文件
         self._indentation = 0       # 排版缩进空格数
 
-        self._pb_file_name = "ly_pb_temp.proto" #"ly_temp_pb_" + self._workbook.file_name + ".proto"        临时文件，不用管中文问题
+        self._pb_file_name = self._book_name + ".proto" #"ly_temp_pb_" + self._workbook.file_name + ".proto"        临时文件，不用管中文问题
         self._struct_list = []
-        self._sheets = {}
+        self._sheets = {}           # name: SheetNode
+        print "load file success: " + self._xls_file_path.split("/")[-1] 
 
 
     def Parse(self) :
         self._LayoutFileHeader()
-        self._output.append("package pb_deploy;\n")
+        self._output.append("package xlsproto;\n")
 
         for sheet in self._workbook.sheets():
             self._sheets[sheet.name] = SheetNode()
             self._ParseSheet(sheet, self._sheets[sheet.name])
+
+        self._LayoutBookNode()
 
         self._Write2File()
         LogHelp.close()
@@ -147,11 +152,10 @@ class XlsReader:
 
         #os.remove(self._pb_file_name)   #remove temperate file
 
-        #DataParse()
+        self._DataParse()
 
     def _ParseSheet(self, sheet, sheet_node) :
         self._LayoutStructHead(sheet.name)
-        self._IncreaseIndentation()
 
         col_count = len(sheet.row_values(ROW_STRUCT_DEFINE))
         LOG_INFO("struct define parse, col_count = %d", col_count)
@@ -167,8 +171,31 @@ class XlsReader:
         self._LayoutStructDefines(sheet_node)
         self._LayoutFieldDefines(sheet_node)
 
-        self._DecreaseIndentation()
         self._LayoutStructTail()
+
+    def _DataParse(self): 
+        """读取数据"""
+        try:    # 先加载生成的方法类
+            book_name = self._xls_file_path.split("\\")[-1]
+            book_name = book_name.split(".")[0]
+            #self._module_name = "xlsproto" + self._sheet_name.lower() + "_pb2"
+            self._module_name = self._book_name + "_pb2"
+            sys.path.append(os.getcwd())
+            self._module = __import__(self._module_name)
+            #exec('from '+self._module_name + ' import *');
+            #self._module = sys.modules[self._module_name]
+        except BaseException, e :
+            print "load module(%s) failed"%(self._module_name)
+            raise
+
+
+        self._book_node = getattr(self._module, self._sheet_name+'_ARRAY')()
+        for sheet in self._workbook.sheets():
+            self._ReadSheet(sheet, self._sheets[sheet.name])
+
+    def _ReadSheet(self, sheet, sheet_node):
+        sheet_node = getattr(self._module, self._sheet_name+'_ARRAY')()
+        return
 
 #Items[#]{item(Item)}
 #Reward[,]{items(Items),exp(int)}
@@ -216,7 +243,11 @@ class XlsReader:
                 sys.exit(-1)
             struct_node.fields[node.name] = node
 
+        if len(struct_node.fields) == 1 : 
+            struct_node.repeated = True;
+
     def _ParseFieldDefine(self, sheet, sheet_node, col):
+        """解析字段定义区"""
         field_type = str(sheet.cell_value(ROW_FIELD_TYPE, col)).strip()
         field_name = str(sheet.cell_value(ROW_FIELD_NAME, col)).strip()
         field_cname = unicode(sheet.cell_value(ROW_FIELD_CNAME, col))
@@ -234,37 +265,48 @@ class XlsReader:
         sheet_node.fields[field_name] = FormatType(field_type)
 
     def _LayoutStructDefines(self, sheet_node) :
+        """解析结构定义区"""
         for struct_name in sheet_node.structs :
             struct_node = sheet_node.structs[struct_name]
             self._LayoutStructHead(struct_node.name)    # Reward  | Items
-            self._IncreaseIndentation()
             field_num = 1
-            if len(struct_node.fields) == 1 :   # Items
+            if struct_node.repeated == True :   # Items
                 field_node = struct_node.fields.values()[0]
-                self._output.append("\t"*self._indentation + "repeated " + field_node.type +" " + field_name + " = " + str(field_num) + ";\n")
+                self._output.append(self._Indentation() + "repeated " + field_node.type +" " + field_name + " = " + str(field_num) + ";\n")
             else :  #Reward{ items, exp }
                 for field_name in struct_node.fields :
                    # optional Items items = 1; 
                    field_node = struct_node.fields[field_name]
-                   self._output.append("\t"*self._indentation + "optional " + field_node.type +" " + field_name + " = " + str(field_num) + ";\n")
+                   self._output.append(self._Indentation() + "optional " + field_node.type +" " + field_name + " = " + str(field_num) + ";\n")
                    field_num += 1
-            self._DecreaseIndentation()
             self._LayoutStructTail()
 
 
     def _LayoutFieldDefines(self, sheet):
         field_num = 1;
         for field_name in sheet.fields :
-            self._output.append("\t"*self._indentation + "optional " + sheet.fields[field_name] + " " + field_name + " = " + str(field_num) + ";\n")
+            self._output.append(self._Indentation() + "optional " + sheet.fields[field_name] + " " + field_name + " = " + str(field_num) + ";\n")
             field_num += 1
 
+    def _LayoutBookNode(self) :
+        """生成工作薄结构"""
+        book_name = self._xls_file_path.split("\\")[-1]
+        book_name = book_name.split(".")[0]
+        self._LayoutStructHead(book_name)
+        field_num = 1
+        for sheet in self._sheets : 
+            self._output.append(self._Indentation() + "repeated " + sheet + " " + \
+             sheet.lower() + "_node" + "\t = " + str(field_num) + ";\n")
+            field_num += 1
+
+        self._LayoutStructTail()
 
     def _LayoutFileHeader(self) :
         """生成PB文件的描述信息"""
         self._output.append("/**\n")
         self._output.append("* @file:   " + self._pb_file_name + "\n")
         self._output.append("* @author: SeanLiu <darkdawn@sina.com>\n")
-        self._output.append("* @brief:  The file is generated by tools. Don't modify it.n")
+        self._output.append("* @brief:  The file is generated by tools. Don't modify it.\n")
         self._output.append("*/\n")
         self._output.append("\n")
 
@@ -272,11 +314,13 @@ class XlsReader:
     def _LayoutStructHead(self, struct_name) :
         """生成结构头"""
         self._output.append("\n")
-        self._output.append("\t"*self._indentation + "message " + struct_name + "{\n")
+        self._output.append(self._Indentation() + "message " + struct_name + "{\n")
+        self._IncreaseIndentation()   
 
     def _LayoutStructTail(self) :
         """生成结构尾"""
-        self._output.append("\t"*self._indentation + "}\n")
+        self._DecreaseIndentation()
+        self._output.append(self._Indentation() + "}\n")
         self._output.append("\n")
 
     def _IncreaseIndentation(self) :
@@ -286,6 +330,10 @@ class XlsReader:
     def _DecreaseIndentation(self) :
         """减少缩进"""
         self._indentation -= 1
+
+    def _Indentation(self) :
+        """返回缩进"""
+        return "\t"*self._indentation
 
     def _Write2File(self) :
         """输出到文件"""
@@ -559,11 +607,12 @@ class DataReader:
 
 if __name__ == '__main__' :
     """入口"""
-    if len(sys.argv) < 2 :
-        print "Usage: %s xls_file" %(sys.argv[0])
+    """if len(sys.argv) < 2 :
+    #    print "Usage: %s xls_file" %(sys.argv[0])
         sys.exit(-1)
 
-    xls_file = sys.argv[1]
+    xls_file = sys.argv[1]"""
+    xls_file = r"F:\MyStorage\xlsreader\example1.xls"
 
     try :
         parser = XlsReader(xls_file)
